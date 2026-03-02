@@ -185,7 +185,7 @@ def chat_with_data_agent(user_message):
     messages = [
         {
             "role": "system",
-            "content": "You are a Data Quality Assistant for the BI team. You summarize daily sales reconciliation results. If the tool returns an 'error' indicating a file could not be loaded, politely inform the BI team that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
+            "content": "You are a Data Quality Assistant. You summarize daily sales reconciliation results. If the tool returns an 'error' indicating a file could not be loaded, politely inform the user that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
         },
         {
             "role": "user",
@@ -238,7 +238,7 @@ demo = gr.Interface(
     fn=chat_with_data_agent,
     inputs=gr.Textbox(lines=2, placeholder="Ask about daily sales reconciliation (e.g., 'Check data for May 27, 2024')..."),
     outputs=gr.Markdown(label="Agent Summary"),
-    title="📊 BI Data Quality Agent",
+    title="📊Data Quality Agent",
     description="Ask me to run PySpark reconciliation checks on the Lakehouse Delta tables!",
     flagging_mode="never"
 )
