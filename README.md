@@ -35,9 +35,14 @@ An interactive, AI-powered data quality assistant designed to automate daily sal
 * **Security:** Azure Key Vault
 * **Frontend:** Gradio
 
-## 📂 Repository Structure
+## 📂 Fabric Workspace Structure (Git Integration)
+This repository is synced directly with a Microsoft Fabric Workspace. The production-ready assets are structured as follows:
+
 ```text
-├── notebooks/
-│   └── Data_Quality_Agent.ipynb  # The primary Fabric notebook containing PySpark and AI logic
-├── requirements.txt              # Required libraries (gradio, openai)
+├── fabric/
+│   ├── AI-Agent-Env.Environment/         # Fabric Custom Environment (houses pip dependencies like gradio, openai)
+│   ├── DQ_Agent.Notebook/                # 🌟 MAIN: Contains the Gradio UI, AI Agent logic, and tool calling orchestration
+│   └── portfolio_lakehouse.Lakehouse/    # Fabric Lakehouse definition, schemas, and OneLake metadata
+├── .gitignore
+├── LICENSE
 └── README.md
