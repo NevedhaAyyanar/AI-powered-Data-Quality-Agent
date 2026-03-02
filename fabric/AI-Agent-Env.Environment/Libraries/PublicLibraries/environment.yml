@@ -1,0 +1,4 @@
+dependencies:
+  - pip:
+      - gradio==6.6.0
+      - openai==2.24.0
