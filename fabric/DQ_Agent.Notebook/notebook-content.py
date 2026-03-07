@@ -1,7 +1,10 @@
+# %% [markdown]
 # Fabric notebook source
 
+# %% [markdown]
 # METADATA ********************
 
+# %% [markdown]
 # META {
 # META   "kernel_info": {
 # META     "name": "synapse_pyspark"
@@ -24,24 +27,30 @@
 # META   }
 # META }
 
+# %% [markdown]
 # CELL ********************
 
-#%pip install gradio
+# %%
+# %pip install gradio
 import json
 from pyspark.sql.functions import *
 from openai import AzureOpenAI
 from notebookutils import mssparkutils
 import gradio as gr
 
+# %% [markdown]
 # METADATA ********************
 
+# %% [markdown]
 # META {
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
 # META }
 
+# %% [markdown]
 # CELL ********************
 
+# %%
 #reconciliation code (Pyspark) - Updated for new schema
 def reconciliation_menu(target_date: str) -> str:
     """compares settled transactions numbers from daily files
@@ -136,35 +145,42 @@ def reconciliation_menu(target_date: str) -> str:
         "mismatched_orders": mismatched_order_details
     })
 
+# %% [markdown]
 # METADATA ********************
 
+# %% [markdown]
 # META {
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
 # META }
 
+# %% [markdown]
 # CELL ********************
 
+# %%
 #AI Agent Logic
 key_vault_name = "https://azure-ai-portfolio-vault.vault.azure.net/"
 api_key = mssparkutils.credentials.getSecret(key_vault_name, "AzureOpenAIKey")
 endpoint = mssparkutils.credentials.getSecret(key_vault_name, "AzureOpenAIEndpoint")
 
+# %%
 client = AzureOpenAI(
     azure_endpoint=endpoint,
     api_key=api_key,
     api_version="2024-02-01"
 )
 
+# %%
 deployment_model = "gpt-4o-agent"
 
+# %%
 #tool definition
 reconciliation_tool = [
     {
         "type": "function",
         "function": {
             "name": "reconciliation_menu",
-            "description": "Compares settled transactions volume and revenue from daily CSV source files against the processed Delta table in the Lakehouse to identify mismatches or variances.",
+            "description": "Compares settled transactions volume and revenue from daily CSV source file against the processed Delta table in the Lakehouse to identify mismatches or variances.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -179,8 +195,10 @@ reconciliation_tool = [
     }
 ]
 
-#setting system & user messages - The Function that Gradio will call
+# %% [markdown]
+# setting system & user messages - The Function that Gradio will call
 
+# %%
 def chat_with_data_agent(user_message):
     messages = [
         {
@@ -224,15 +242,19 @@ def chat_with_data_agent(user_message):
     else:
         return response_message.content
 
+# %% [markdown]
 # METADATA ********************
 
+# %% [markdown]
 # META {
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
 # META }
 
+# %% [markdown]
 # CELL ********************
 
+# %%
 # Launch the Interactive UI
 demo = gr.Interface(
     fn=chat_with_data_agent,
@@ -243,10 +265,13 @@ demo = gr.Interface(
     flagging_mode="never"
 )
 
+# %%
 demo.launch(share=True)
 
+# %% [markdown]
 # METADATA ********************
 
+# %% [markdown]
 # META {
 # META   "language": "python",
 # META   "language_group": "synapse_pyspark"
