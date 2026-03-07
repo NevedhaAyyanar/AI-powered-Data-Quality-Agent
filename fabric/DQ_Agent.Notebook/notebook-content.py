@@ -1,4 +1,3 @@
-# %% [markdown]
 # Fabric notebook source
 
 # %% [markdown]
