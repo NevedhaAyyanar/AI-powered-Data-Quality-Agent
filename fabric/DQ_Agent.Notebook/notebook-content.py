@@ -164,7 +164,7 @@ reconciliation_tool = [
         "type": "function",
         "function": {
             "name": "reconciliation_menu",
-            "description": "Compares settled transactions volume and revenue from daily CSV source files against the processed Delta table in the Lakehouse to identify mismatches or variances.",
+            "description": "Compares settled transactions volume and revenue from daily CSV source file against the processed Delta table in the Lakehouse to identify mismatches or variances.",
             "parameters": {
                 "type": "object",
                 "properties": {
