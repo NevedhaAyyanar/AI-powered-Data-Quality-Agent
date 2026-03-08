@@ -254,30 +254,8 @@ demo.launch(share=True)
 
 # CELL ********************
 
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
-
-#checking if this new code block is reflected in .py file 
-
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
+#checking if this new code block is reflected in .py file
 
 # CELL ********************
 
-# test cell from fabric
-
-# METADATA ********************
-
-# META {
-# META   "language": "python",
-# META   "language_group": "synapse_pyspark"
-# META }
+#check the new cell update in fabric
