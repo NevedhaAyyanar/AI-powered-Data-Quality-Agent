@@ -233,12 +233,11 @@ def ipynb_to_fabric_py(ipynb_path):
                 meta_lines=orig.get("meta_lines", [])
             )
         else:
-            # New cell — use default Fabric metadata
-            defaults = _default_cell_meta()
+            # New cell — NO metadata block, Fabric adds it on sync
             _write_cell_block(
                 output_lines, source,
-                meta_header=defaults["meta_header"],
-                meta_lines=defaults["meta_lines"]
+                meta_header=None,
+                meta_lines=None
             )
 
     content = "\n".join(output_lines)
