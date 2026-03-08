@@ -160,74 +160,102 @@ def fabric_py_to_ipynb(py_path):
     print(f"   {len(notebook['cells'])} cells created")
 
 
+def _default_cell_meta():
+    """Default Fabric cell metadata for new cells."""
+    return {
+        "meta_header": "# METADATA ********************",
+        "meta_lines": [
+            '# META {',
+            '# META   "language": "python",',
+            '# META   "language_group": "synapse_pyspark"',
+            '# META }'
+        ]
+    }
+
+
+def _write_cell_block(output_lines, source, meta_header=None, meta_lines=None):
+    """Write a single cell block in Fabric format."""
+    output_lines.append("# CELL ********************")
+    output_lines.append("")
+    if meta_header:
+        output_lines.append(meta_header)
+        output_lines.append("")
+        output_lines.extend(meta_lines)
+        output_lines.append("")
+    output_lines.append(source)
+    output_lines.append("")
+
+
 def ipynb_to_fabric_py(ipynb_path):
-    """Convert .ipynb back to Fabric's .py format"""
+    """Convert .ipynb back to Fabric's .py format.
+    Handles added, removed, and edited cells."""
 
     with open(ipynb_path, "r", encoding="utf-8") as f:
         notebook = json.load(f)
 
     fabric_blocks = notebook.get("metadata", {}).get("fabric_blocks", None)
+    nb_cells = notebook.get("cells", [])
 
+    # Get original cell blocks for metadata reuse
+    original_cell_blocks = []
     if fabric_blocks:
-        output_lines = []
-        cell_index = 0
+        original_cell_blocks = [b for b in fabric_blocks if b["type"] == "cell"]
 
+    output_lines = []
+
+    # Write prologue
+    if fabric_blocks:
         for block in fabric_blocks:
             if block["type"] == "prologue":
                 output_lines.append(block["raw"])
                 output_lines.append("")
-
             elif block["type"] == "notebook_metadata":
                 output_lines.append(block["header"])
                 output_lines.append("")
                 output_lines.extend(block["meta_lines"])
                 output_lines.append("")
-
-            elif block["type"] == "cell":
-                output_lines.append(block["cell_marker"])
-                output_lines.append("")
-
-                if block["meta_header"]:
-                    output_lines.append(block["meta_header"])
-                    output_lines.append("")
-                    output_lines.extend(block["meta_lines"])
-                    output_lines.append("")
-
-                if cell_index < len(notebook["cells"]):
-                    source = notebook["cells"][cell_index].get("source", "")
-                    if isinstance(source, list):
-                        source = "".join(source)
-                    output_lines.append(source)
-                    cell_index += 1
-                else:
-                    output_lines.append("\n".join(block["code_lines"]))
-
-                output_lines.append("")
-
-        content = "\n".join(output_lines)
-
     else:
-        content = "# Fabric notebook source\n\n"
-        for cell in notebook.get("cells", []):
-            content += "# CELL ********************\n\n"
-            cell_meta = cell.get("metadata", {}).get("fabric", {})
-            if cell_meta:
-                content += "# METADATA ********************\n\n"
-                meta_json = json.dumps(cell_meta, indent=4)
-                for line in meta_json.split("\n"):
-                    content += f"# META {line}\n"
-                content += "\n"
-            source = cell.get("source", "")
-            if isinstance(source, list):
-                source = "".join(source)
-            content += source + "\n\n"
+        output_lines.append("# Fabric notebook source")
+        output_lines.append("")
+
+    # Write cells — match notebook cells to original blocks
+    for i, cell in enumerate(nb_cells):
+        source = cell.get("source", "")
+        if isinstance(source, list):
+            source = "".join(source)
+
+        if i < len(original_cell_blocks):
+            # Existing cell — reuse original Fabric metadata
+            orig = original_cell_blocks[i]
+            _write_cell_block(
+                output_lines, source,
+                meta_header=orig.get("meta_header"),
+                meta_lines=orig.get("meta_lines", [])
+            )
+        else:
+            # New cell — use default Fabric metadata
+            defaults = _default_cell_meta()
+            _write_cell_block(
+                output_lines, source,
+                meta_header=defaults["meta_header"],
+                meta_lines=defaults["meta_lines"]
+            )
+
+    content = "\n".join(output_lines)
 
     py_path = ipynb_path.replace(".ipynb", ".py")
     with open(py_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    print(f"✅ Converted: {ipynb_path} → {py_path}")
-    print(f"   Fabric format preserved")
+    # Summary
+    added = max(0, len(nb_cells) - len(original_cell_blocks))
+    removed = max(0, len(original_cell_blocks) - len(nb_cells))
+    msg = f"✅ Converted: {ipynb_path} → {py_path}\n   {len(nb_cells)} cells"
+    if added:
+        msg += f" ({added} new)"
+    if removed:
+        msg += f" ({removed} removed)"
+    print(msg)
 
 
 if __name__ == "__main__":
