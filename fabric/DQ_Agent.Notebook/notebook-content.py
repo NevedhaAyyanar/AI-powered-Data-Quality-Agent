@@ -238,7 +238,6 @@ def chat_with_data_agent(user_message, history):
 # Launch the Interactive UI
 demo = gr.ChatInterface(
     fn=chat_with_data_agent,
-    type="messages",
     title="📊Data Quality Agent",
     description="Ask me to run PySpark reconciliation checks on the Lakehouse Delta tables!",
     textbox=gr.Textbox(placeholder="Ask about daily sales reconciliation (e.g., 'Check data for May 27, 2024')...", scale=7)
@@ -246,3 +245,10 @@ demo = gr.ChatInterface(
 
 demo.launch(share=True)
 
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
