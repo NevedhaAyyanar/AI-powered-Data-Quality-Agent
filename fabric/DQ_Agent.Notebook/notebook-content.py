@@ -181,17 +181,19 @@ reconciliation_tool = [
 
 #setting system & user messages - The Function that Gradio will call
 
-def chat_with_data_agent(user_message):
+def chat_with_data_agent(user_message, history):
     messages = [
         {
             "role": "system",
             "content": "You are a Data Quality Assistant. You summarize daily sales reconciliation results. If the tool returns an 'error' indicating a file could not be loaded, politely inform the user that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
-        },
-        {
-            "role": "user",
-            "content": user_message
         }
     ]
+
+    # rebuild conversation history from previous turns
+    for past_message in history:
+        messages.append({"role": past_message["role"], "content": past_message["content"]})
+
+    messages.append({"role": "user", "content": user_message})
 
     response = client.chat.completions.create(
         model=deployment_model,
@@ -234,13 +236,12 @@ def chat_with_data_agent(user_message):
 # CELL ********************
 
 # Launch the Interactive UI
-demo = gr.Interface(
+demo = gr.ChatInterface(
     fn=chat_with_data_agent,
-    inputs=gr.Textbox(lines=2, placeholder="Ask about daily sales reconciliation (e.g., 'Check data for May 27, 2024')..."),
-    outputs=gr.Markdown(label="Agent Summary"),
+    type="messages",
     title="📊Data Quality Agent",
     description="Ask me to run PySpark reconciliation checks on the Lakehouse Delta tables!",
-    flagging_mode="never"
+    textbox=gr.Textbox(placeholder="Ask about daily sales reconciliation (e.g., 'Check data for May 27, 2024')...", scale=7)
 )
 
 demo.launch(share=True)
