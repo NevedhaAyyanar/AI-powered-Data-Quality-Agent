@@ -185,7 +185,7 @@ def chat_with_data_agent(user_message, history):
     messages = [
         {
             "role": "system",
-            "content": "You are a Data Quality Assistant. You summarize daily sales reconciliation results. If the tool returns an 'error' indicating a file could not be loaded, politely inform the user that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
+            "content": "You are a Data Quality Assistant. You summarize daily sales reconciliation results. ALWAYS use the reconciliation tool when the user provides a date — never assume or guess whether data exists for a given date. Do NOT make up limitations about date ranges. If the tool returns an 'error' indicating a file could not be loaded, politely inform the user that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
         }
     ]
 
@@ -199,7 +199,8 @@ def chat_with_data_agent(user_message, history):
         model=deployment_model,
         messages=messages,
         tools=reconciliation_tool,
-        tool_choice="auto"
+        tool_choice="auto",
+        temperature=0
     )
 
     response_message = response.choices[0].message
