@@ -182,6 +182,11 @@ reconciliation_tool = [
 #setting system & user messages - The Function that Gradio will call
 
 def chat_with_data_agent(user_message, history):
+    print("\n" + "="*60)
+    print(f"[LOG] User message: {user_message}")
+    print(f"[LOG] History length: {len(history)}")
+    print(f"[LOG] History: {json.dumps(history, indent=2, default=str)}")
+
     messages = [
         {
             "role": "system",
@@ -195,6 +200,10 @@ def chat_with_data_agent(user_message, history):
 
     messages.append({"role": "user", "content": user_message})
 
+    print(f"[LOG] Messages sent to LLM ({len(messages)} total):")
+    for i, m in enumerate(messages):
+        print(f"  [{i}] role={m['role']}, content={str(m.get('content', ''))[:100]}")
+
     response = client.chat.completions.create(
         model=deployment_model,
         messages=messages,
@@ -204,6 +213,8 @@ def chat_with_data_agent(user_message, history):
     )
 
     response_message = response.choices[0].message
+    print(f"[LOG] LLM response - tool_calls: {response_message.tool_calls}")
+    print(f"[LOG] LLM response - content: {response_message.content}")
     messages.append(response_message)
 
     if response_message.tool_calls:
@@ -211,7 +222,9 @@ def chat_with_data_agent(user_message, history):
             if tool_call.function.name == "reconciliation_menu":
                 function_args = json.loads(tool_call.function.arguments)
                 date_to_check = function_args.get("target_date")
+                print(f"[LOG] Calling tool with date: {date_to_check}")
                 tool_output = reconciliation_menu(target_date=date_to_check)
+                print(f"[LOG] Tool output: {tool_output[:200]}")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -223,8 +236,12 @@ def chat_with_data_agent(user_message, history):
             model=deployment_model,
             messages=messages
         )
+        print(f"[LOG] Final response: {final_response.choices[0].message.content[:200]}")
+        print("="*60)
         return final_response.choices[0].message.content
     else:
+        print("[LOG] No tool call - returning direct response")
+        print("="*60)
         return response_message.content
 
 # METADATA ********************
