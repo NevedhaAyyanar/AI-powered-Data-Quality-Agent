@@ -28,10 +28,53 @@
 
 #%pip install gradio
 import json
+import re
+import os
+import logging
+from datetime import datetime
 from pyspark.sql.functions import *
 from openai import AzureOpenAI
 from notebookutils import mssparkutils
 import gradio as gr
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+# File-based logging (works in Gradio background threads unlike print)
+log_path = "/tmp/agent_log.txt"
+session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+lakehouse_log_path = f"abfss://AI_Portfolio@onelake.dfs.fabric.microsoft.com/portfolio_lakehouse.Lakehouse/Files/Logs/agent_log_{session_id}.txt"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.FileHandler(log_path, mode="a"), logging.StreamHandler()]
+)
+logger = logging.getLogger("DQAgent")
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
+def sync_log_to_lakehouse():
+    """Copy log file to Lakehouse so it persists after session ends."""
+    try:
+        with open(log_path, "r") as f:
+            mssparkutils.fs.put(lakehouse_log_path, f.read(), True)
+    except Exception:
+        pass
+
 
 # METADATA ********************
 
@@ -145,104 +188,168 @@ def reconciliation_menu(target_date: str) -> str:
 
 # CELL ********************
 
-#AI Agent Logic
+def list_available_dates() -> str:
+    """Lists all available source files in the Lakehouse"""
+    source_files_path = "abfss://AI_Portfolio@onelake.dfs.fabric.microsoft.com/portfolio_lakehouse.Lakehouse/Files/SourceFiles/"
+    files = mssparkutils.fs.ls(source_files_path)
+    dates = []
+    for file in files:
+        if file.isDir:
+            match = re.search(r"Sales_Out_(\d{6})\.csv", file.name)
+            if match:
+                dates.append(match.group(1))
+    dates.sort()
+    return json.dumps({"available_dates": dates, "total_dates:": len(dates)})
+
+
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
+
 key_vault_name = "https://azure-ai-portfolio-vault.vault.azure.net/"
 api_key = mssparkutils.credentials.getSecret(key_vault_name, "AzureOpenAIKey")
 endpoint = mssparkutils.credentials.getSecret(key_vault_name, "AzureOpenAIEndpoint")
 
-client = AzureOpenAI(
-    azure_endpoint=endpoint,
-    api_key=api_key,
-    api_version="2024-02-01"
-)
-
-deployment_model = "gpt-4o-agent"
-
-#tool definition
-reconciliation_tool = [
-    {
-        "type": "function",
-        "function": {
-            "name": "reconciliation_menu",
-            "description": "Compares settled transactions volume and revenue from daily CSV source file against the processed Delta table in the Lakehouse to identify mismatches or variances.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "target_date": {
-                        "type": "string",
-                        "description": "The date to run the reconciliation for. MUST be formatted as YYMMDD (e.g., '231025' for October 25, 2023)."
-                    }
-                },
-                "required": ["target_date"]
-            }
-        }
-    }
-]
-
-#setting system & user messages - The Function that Gradio will call
-
 def chat_with_data_agent(user_message, history):
-    print("\n" + "="*60)
-    print(f"[LOG] User message: {user_message}")
-    print(f"[LOG] History length: {len(history)}")
-    print(f"[LOG] History: {json.dumps(history, indent=2, default=str)}")
+    try:
+        logger.info(f"={'='*50}")
+        logger.info(f"USER: {user_message}")
+        logger.info(f"HISTORY LENGTH: {len(history)} messages")
 
-    messages = [
-        {
-            "role": "system",
-            "content": "You are a Data Quality Assistant. You summarize daily sales reconciliation results. ALWAYS use the reconciliation tool when the user provides a date — never assume or guess whether data exists for a given date. Do NOT make up limitations about date ranges. If the tool returns an 'error' indicating a file could not be loaded, politely inform the user that the daily CSV source file has not been dropped into the Lakehouse yet. If there are mismatches, format them clearly using bullet points or a small markdown table."
-        }
-    ]
+        client = AzureOpenAI(
+            azure_endpoint=endpoint,
+            api_key=api_key,
+            api_version="2024-02-01"
+        )
+        deployment_model = "gpt-4o-agent"
 
-    # rebuild conversation history from previous turns
-    for past_message in history:
-        messages.append({"role": past_message["role"], "content": past_message["content"]})
+        agent_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "reconciliation_menu",
+                    "description": "Compares settled transactions volume and revenue from daily CSV source file against the processed Delta table in the Lakehouse to identify mismatches or variances.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "target_date": {
+                                "type": "string",
+                                "description": "The date to run the reconciliation for. MUST be formatted as YYMMDD (e.g., '231025' for October 25, 2023)."
+                            }
+                        },
+                        "required": ["target_date"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_available_dates",
+                    "description": "Lists all available source file dates in the Lakehouse. Use this when the user asks about available dates, recent data, latest reconciliation, or any vague date reference.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            }
+        ]
 
-    messages.append({"role": "user", "content": user_message})
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a Data Quality Assistant. You help users run and understand daily sales reconciliation results.\n\n"
+                    "TOOLS:\n"
+                    "1. list_available_dates — returns all available source file dates from the Lakehouse.\n"
+                    "2. reconciliation_menu — runs reconciliation for a specific date (YYMMDD format).\n\n"
+                    "RULES (follow strictly):\n"
+                    "- You do NOT know what dates are available. NEVER guess or assume dates.\n"
+                    "- When the user says 'latest', 'recent', 'last few days', 'all', or any vague date reference, "
+                    "you MUST call list_available_dates FIRST before doing anything else.\n"
+                    "- Only call reconciliation_menu with a date that was either explicitly provided by the user in YYMMDD format, "
+                    "or returned by list_available_dates.\n"
+                    "- 'yesterday', 'today', 'last week' etc. refer to ACTUAL calendar dates — not 'most recent available'. "
+                    "If the user says 'yesterday' and that calendar date is not in the available dates list, tell the user "
+                    "that date is not available and show them which dates ARE available. Do NOT substitute a different date.\n"
+                    "- If you are unsure about the user's intent, date, or any detail, ask a clarifying question — do NOT decide on your own.\n"
+                    "- If reconciliation_menu returns an error about a file not loading, tell the user the CSV source file has not been dropped into the Lakehouse yet.\n"
+                    "- Format mismatches clearly using bullet points or a small markdown table."
+                )
+            }
+        ]
 
-    print(f"[LOG] Messages sent to LLM ({len(messages)} total):")
-    for i, m in enumerate(messages):
-        print(f"  [{i}] role={m['role']}, content={str(m.get('content', ''))[:100]}")
+        # rebuild conversation history from previous turns
+        for past_message in history:
+            messages.append({"role": past_message["role"], "content": past_message["content"]})
 
-    response = client.chat.completions.create(
-        model=deployment_model,
-        messages=messages,
-        tools=reconciliation_tool,
-        tool_choice="auto",
-        temperature=0
-    )
+        messages.append({"role": "user", "content": user_message})
 
-    response_message = response.choices[0].message
-    print(f"[LOG] LLM response - tool_calls: {response_message.tool_calls}")
-    print(f"[LOG] LLM response - content: {response_message.content}")
-    messages.append(response_message)
+        logger.info("CALLING OpenAI (initial)...")
+        response = client.chat.completions.create(
+            model=deployment_model,
+            messages=messages,
+            tools=agent_tools,
+            tool_choice="auto",
+            temperature=0
+        )
 
-    if response_message.tool_calls:
-        for tool_call in response_message.tool_calls:
-            if tool_call.function.name == "reconciliation_menu":
-                function_args = json.loads(tool_call.function.arguments)
-                date_to_check = function_args.get("target_date")
-                print(f"[LOG] Calling tool with date: {date_to_check}")
-                tool_output = reconciliation_menu(target_date=date_to_check)
-                print(f"[LOG] Tool output: {tool_output[:200]}")
+        response_message = response.choices[0].message
+        messages.append(response_message)
+
+        has_tools = bool(response_message.tool_calls)
+        logger.info(f"LLM RESPONSE: tool_calls={has_tools}, content={response_message.content[:100] if response_message.content else 'None'}")
+
+        # tool call loop — handles sequential tool calls (e.g., list dates then reconcile)
+        loop_count = 0
+        while response_message.tool_calls:
+            loop_count += 1
+            for tool_call in response_message.tool_calls:
+                logger.info(f"TOOL CALL [{loop_count}]: {tool_call.function.name}({tool_call.function.arguments})")
+                if tool_call.function.name == "reconciliation_menu":
+                    function_args = json.loads(tool_call.function.arguments)
+                    tool_output = reconciliation_menu(target_date=function_args["target_date"])
+                elif tool_call.function.name == "list_available_dates":
+                    tool_output = list_available_dates()
+                else:
+                    tool_output = json.dumps({"error": f"Unknown tool: {tool_call.function.name}"})
+
+                logger.info(f"TOOL RESULT [{tool_call.function.name}]: {tool_output[:200]}")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "name": "reconciliation_menu",
+                    "name": tool_call.function.name,
                     "content": tool_output
                 })
 
-        final_response = client.chat.completions.create(
-            model=deployment_model,
-            messages=messages
-        )
-        print(f"[LOG] Final response: {final_response.choices[0].message.content[:200]}")
-        print("="*60)
-        return final_response.choices[0].message.content
-    else:
-        print("[LOG] No tool call - returning direct response")
-        print("="*60)
-        return response_message.content
+            logger.info(f"CALLING OpenAI (after tool loop {loop_count})...")
+            response = client.chat.completions.create(
+                model=deployment_model,
+                messages=messages,
+                tools=agent_tools,
+                tool_choice="auto",
+                temperature=0
+            )
+            response_message = response.choices[0].message
+            messages.append(response_message)
+            logger.info(f"Whole convo: {messages}")
+            logger.info(f"LLM RESPONSE [{loop_count}]: tool_calls={bool(response_message.tool_calls)}, content={response_message.content[:100] if response_message.content else 'None'}")
+
+        final = response_message.content or "I processed your request but didn't generate a response. Please try again."
+        logger.info(f"FINAL RESPONSE: {final[:150]}")
+        sync_log_to_lakehouse()
+        return final
+
+    except Exception as e:
+        logger.error(f"ERROR: {str(e)}")
+        sync_log_to_lakehouse()
+        return f"⚠️ Something went wrong: {str(e)}"
 
 # METADATA ********************
 
@@ -262,6 +369,16 @@ demo = gr.ChatInterface(
 )
 
 demo.launch(share=True)
+
+
+# METADATA ********************
+
+# META {
+# META   "language": "python",
+# META   "language_group": "synapse_pyspark"
+# META }
+
+# CELL ********************
 
 
 # METADATA ********************
